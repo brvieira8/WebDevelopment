@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient } = require("mongodb");
+const { MongoClient, Timestamp } = require("mongodb");
 const uri =   "mongodb://localhost:27017";
 const client = new MongoClient(uri);
 const app = express();
@@ -50,6 +50,7 @@ app.post('/register', urlencodedParser,function(req,res){
     var reg = req.body;
     var dbo = client.db("ProjetoWeb");
     var myobj = { name: reg.name,password:reg.password,email:reg.email,role:"user"};
+    var logs = {username:reg.name,description:"User has been registrated",date:Date.now()}
     var checkEmail = {email:myobj.email};
     var checkName = {name:myobj.name};
     //Verifica primeiro se nao existe nenhuma conta a utilizar este email
@@ -68,9 +69,12 @@ app.post('/register', urlencodedParser,function(req,res){
                     if(checkPasswordStrength(myobj.password)){
                         //Regista a nova conta
                         dbo.collection("users").insertOne(myobj, function(err, res) {
-                        if (err) throw err;
-                            console.log("User created");
+                        if (err) throw err;  
                             client.close();
+                            dbo.collection("userlogs").insertOne(logs,function(err,res){
+                                if(err) throw err;                                
+                                    client.close();
+                                });
                         });
                         res.status(201).send("Account has been registred with sucess!");
                     }else{
@@ -93,6 +97,7 @@ app.post('/login', urlencodedParser,function(req,res){
     var checkUserId = {name:myObj.name, password:myObj.password};
     var checkToken ={name:myObj.name};
     const dateObject = new Date();
+    var logs = {username:log.name,description:"User has logged in",time:Date.now()}
 
     //Verifica se o user existe, de acordo com o username e password
     dbo.collection("users").find(checkName1).toArray(function(err,result){
@@ -106,6 +111,10 @@ app.post('/login', urlencodedParser,function(req,res){
                     dbo.collection("tokens").insertOne(newToken,function(err,result){
                         if (err) throw err;
                         client.close();
+                        dbo.collection("userlogs").insertOne(logs,function(err,res){
+                            if(err) throw err;                                
+                                client.close();
+                            });
                     });
                     res.send("Token creaated");
                 }
@@ -123,10 +132,15 @@ app.post('/logout',urlencodedParser,function(req,res){
     var dbo = client.db("ProjetoWeb");
     var out = req.body
     var userLogout = {token:out.token,name:out.name}
-    var checkTokenExists = {token:userLogout.token,name:userLogout.name}
+    var checkTokenExists = {token:userLogout.token,name:userLogout.name};
+    var logs = {username:out.name,description:"User has logged out",time:Date.now()}
     dbo.collection("tokens").find(checkTokenExists).toArray(function(err,result){
         if(result.length!=0){
             dbo.collection("tokens").remove(checkTokenExists)
+            dbo.collection("userlogs").insertOne(logs,function(err,res){
+                if(err) throw err;                                
+                    client.close();
+                });
             res.send("Token deleted")
         }else{
             res.send("This token doesnt exists")
@@ -148,23 +162,24 @@ app.post('/setseller',urlencodedParser,function(req,res){
     });
 });
 
-app.post('/addDevice',urlencodedParser,function(req,res){
+app.post('/addDeviceType',urlencodedParser,function(req,res){
     var dbo = client.db("ProjetoWeb");
     var deviceBody =req.body
-    var device = {owner:deviceBody.name,brand:deviceBody.brand,name:deviceBody.name,type:deviceBody.type}
-    dbo.collection("devices").insertOne(deviceBody,function(err,result){
-        res.send("Device has been aded!")
+    var device = {type:deviceBody.type}
+    dbo.collection("devicetypes").insertOne(deviceBody,function(err,result){
+        res.send("Device type has been aded!")
     })
 })
 
-app.post('/removeDevice',urlencodedParser,function(req,res){
+
+app.post('/removeDeviceType',urlencodedParser,function(req,res){
     var dbo = client.db("ProjetoWeb");
     var device=req.body
-    var querry={owner:device.owner,idDevice:device.id}
-    dbo.collection("devices").find(querry).toArray(function(err,result){
+    var querry={type:device.type}
+    dbo.collection("devicetypes").find(querry).toArray(function(err,result){
         if(result.length!=0){
-            dbo.collection("devices").updateOne(querry, { $set: { owner: "unregistered" } })
-            res.send("Device unregistred sucessfully")
+            dbo.collection("devicetypes").remove(querry)
+            res.send("Device type unregistred sucessfully")
         }else{
             res.send("Error while trying to unregister")
         }
@@ -172,8 +187,65 @@ app.post('/removeDevice',urlencodedParser,function(req,res){
     
 })
 
+app.post('/addDevice',urlencodedParser,function(req,res){
+    var dbo = client.db("ProjetoWeb");
+    var deviceBody =req.body
+    var device = {owner:deviceBody.name,model:deviceBody.model,name:deviceBody.name,type:deviceBody.type}
+    var logs = {owner:deviceBody.name,model:deviceBody.model,type:deviceBody.type,description:"Device has been added",date:Date.now()}
+    dbo.collection("devices").insertOne(deviceBody,function(err,result){
+        dbo.collection("devicelogs").insertOne(logs,function(err,result){
+            if (err) throw err;
+            client.close();
+            res.send("Device has been added!a")
+        })
+    })
+})
 
-app.post('/deleteDevice',urlencodedParser,function(req,res){
+
+
+app.post('/addDeviceModel',urlencodedParser,function(req,res){
+    var dbo = client.db("ProjetoWeb");
+    var deviceBody =req.body
+    var device = {devicemodel:deviceBody.devicemodel,devicetype:deviceBody.devicetype}
+    dbo.collection("devicemodels").insertOne(deviceBody,function(err,result){
+        res.send("Device has been aded!")
+    })
+})
+
+app.post('/removeDeviceModel',urlencodedParser,function(req,res){
+    var dbo = client.db("ProjetoWeb");
+    var device=req.body
+    var querry={devicemodel:device.devicemodel,devicetype:device.devicetype}
+    dbo.collection("devicemodels").find(querry).toArray(function(err,result){
+        if(result.length!=0){
+            dbo.collection("devicemodels").remove(querry)
+            res.send("Device model unregistred sucessfully")
+        }else{
+            res.send("Error while trying to unregister")
+        }
+    });    
+})
+
+app.post('/stopMonitoringDevice',urlencodedParser,function(req,res){
+    var dbo = client.db("ProjetoWeb");
+    var device=req.body
+    var querry={owner:device.owner,idDevice:device.id}
+    var logs={owner:device.owner,model:device.model,type:device.type,description:"User has stopped this device from being monitored"}
+    dbo.collection("devices").find(querry).toArray(function(err,result){
+        if(result.length!=0){
+            dbo.collection("devices").updateOne(querry, { $set: { owner: "unregistered" } })
+            dbo.collection("devicelogs").insertOne(logs,function(err,result){
+                if (err) throw err;
+                client.close();
+                res.send("Monitoring this device has been stoped")
+            })
+        }else{
+            res.send("Error while trying to stop")
+        }
+    });    
+})
+
+app.post('/unregisterDevice',urlencodedParser,function(req,res){
     var dbo = client.db("ProjetoWeb");
     var device=req.body
     var querry={owner:device.owner,idDevice:device.id}
@@ -186,6 +258,34 @@ app.post('/deleteDevice',urlencodedParser,function(req,res){
         }
     });
 })
+
+app.get('/userlogs',urlencodedParser,function(req,res){
+    var dbo =client.db("ProjetoWeb");
+    dbo.collection("userlogs").find({}).toArray(function(err,result){
+        res.send(result);
+    })
+});
+
+
+app.get('/devicelogsmodel',urlencodedParser,function(req,res){
+    var dbo =client.db("ProjetoWeb");
+    var i=req.body
+    var querry={model:i.model}
+    dbo.collection("devicelogs").find(querry).toArray(function(err,result){
+        res.send(result);
+    })
+});
+
+
+app.get('/devicelogstype',urlencodedParser,function(req,res){
+    var dbo =client.db("ProjetoWeb");
+    var i=req.body
+    var querry={type:i.type}
+    dbo.collection("devicelogs").find(querry).toArray(function(err,result){
+        res.send(result);
+    })
+});
+
 
 
 app.listen(port, () => console.log(`Listening at http://localhost:${port}`))
